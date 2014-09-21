@@ -1,0 +1,181 @@
+---
+title: "Exercise Behavior and Prediction"
+author: "Dahyr J. Vergara Suárez"
+date: "Friday, September 19, 2014"
+output: html_document
+---
+
+
+### Executive Summary
+
+
+
+### Data Gathering & Exploration
+
+```{r get-data, cache=FALSE, echo=FALSE}
+library(ggplot2)
+library(caret)
+```
+
+
+```{r get-data, cache=TRUE, echo=FALSE}
+setInternet2(TRUE)
+download.file(
+	"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", 
+	"pml-training.csv")
+training <- read.csv("pml-training.csv")
+download.file(
+	"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", 
+	"pml-testing.csv")
+testing <- read.csv("pml-testing.csv")
+setDim <- rbind(dim(testing), dim(training))
+rownames(setDim) <- c("Testing Set", "Training Set")
+colnames(setDim) <- c("# Obs.", "# Vars.")
+setDim
+
+# Starts on sunday & january
+training$formatted_time <- as.POSIXlt(training$cvtd_timestamp, 
+									  format = "%d/%m/%Y %H:%M")
+training$weekday <- training$formatted_time$wday + 1
+training$month <- training$formatted_time$mon + 1
+training$hour <- training$formatted_time$hour
+training$new_window <- as.numeric(training$new_window == "yes")
+
+
+testing$formatted_time <- as.POSIXlt(testing$cvtd_timestamp, 
+									  format = "%d/%m/%Y %H:%M")
+testing$weekday <- testing$formatted_time$wday + 1
+testing$month <- testing$formatted_time$mon + 1
+testing$hour <- testing$formatted_time$hour
+testing$new_window <- as.numeric(testing$new_window == "yes")
+
+# Subsetting to exclude some variables that we know won't affect the outcome
+training <- subset(training, select = -c(1, user_name, raw_timestamp_part_1, 
+				 	raw_timestamp_part_2, cvtd_timestamp, formatted_time))
+testing <- subset(testing, select = -c(1, user_name, raw_timestamp_part_1, 
+				 	raw_timestamp_part_2, cvtd_timestamp, formatted_time))
+
+# Correcting zero length variables and NA's only for the training set
+for(i in 3:ncol(training)) {
+	if(class(training[, i]) == "factor" && names(training)[i] != "classe") {
+		trainNA <- training[, i] == ""
+		trainInf <- training[, i] == "#DIV/0!"
+		training[trainNA, i] <- NA
+		training[trainInf, i] <- Inf
+		training[, i] <- as.numeric(as.character(training[, i]))
+	}
+}
+
+
+```
+
+
+Now let's remove all those variables that have near zero variance and then use principal component analysis (PCA) with thresholds of 70, 80 and 90% of variance to find a good number of variables to use in our predictions. With 70% variance we can use 14, for 80% 21 and to obtain variance of 90% 34 variables would be needed. With this in mind the decision is to use 14 variables
+
+
+```{r pca, fig.width=10, fig.height=10}
+## Variance analysis
+# Subsetting again to exclude those variables with near zero variance
+nzv <- nearZeroVar(training, saveMetrics = T)
+training <- training[, rownames(nzv)[!nzv$nzv]]
+
+pp70 <- preProcess(training[, -119], method = "pca", thresh = 0.7)
+pp80 <- preProcess(training[, -119], method = "pca", thresh = 0.8)
+pp90 <- preProcess(training[, -119], method = "pca", thresh = 0.9)
+
+pcaComps <- as.data.frame(c(pp70$numComp, pp80$numComp, pp90$numComp))
+names(pcaComps) <- c("# Components")
+rownames(pcaComps) <- c("70% Variation", "80% Variation", "90% Variation")
+pcaComps
+
+predpca70 <- predict(pp70, training[, -119])
+qplot(predpca70[, 1], predpca70[, 2], col = training$classe)
+#confusionMatrix(training$classe, predict(pp70, predpca70))
+
+rf <- train(classe ~ ., data = training, method = "rf", 
+			prox = T, importance = T)
+
+rfx3 <- train(classe ~ ., data = training, method = "rf", 
+			  ntree = 1500, prox = T)
+
+rfpca <- train(classe ~ ., data = training, method = "rf", preProcess = "pca", 
+			   prox = T, thresh = 0.9)
+
+topImportanceRf <- importance(rf$finalModel)[, c(6, 7)]
+
+head(topImportanceRf[order(-topImportanceRf[, 2]), ], 5)
+
+qplot(avg_roll_dumbbell, avg_pitch_belt, color = classe, data = training)
+#library(rattle)
+#fancyRpartPlot(getTree(rf$finalModel, k = 1))
+```
+
+Resampling is done within the implementation of the random forests algorithm (by default 500 trees)
+
+
+> rfx3 <- train(classe ~ ., data = training, method = "rf", 
++ 			  ntree = 1500, prox = T)
+> rfx3
+Random Forest 
+
+19622 samples
+  121 predictors
+    5 classes: 'A', 'B', 'C', 'D', 'E' 
+
+No pre-processing
+Resampling: Bootstrapped (25 reps) 
+
+Summary of sample sizes: 217, 217, 217, 217, 217, 217, ... 
+
+Resampling results across tuning parameters:
+
+  mtry  Accuracy  Kappa  Accuracy SD  Kappa SD
+  2     0.75      0.684  0.0578       0.0711  
+  61    0.741     0.673  0.056        0.0688  
+  121   0.733     0.663  0.0558       0.0687  
+
+Accuracy was used to select the optimal model using  the largest value.
+The final value used for the model was mtry = 2. 
+
+
+```{r healthdamage, fig.width=10, fig.height=10}
+qplot(gyros_belt_x, classe, data = training)
+```
+
+
+### Model Building
+
+- Model description
+
+
+- Cross validation
+
+
+
+```{r build-model, cache=TRUE, echo=FALSE}
+
+```
+
+
+- Expected sample error
+
+
+
+
+### Model Testing
+
+- 20 test cases
+
+
+- Misfits
+
+
+- Actual error
+
+
+```{r, echo=FALSE}
+
+```
+
+
+
